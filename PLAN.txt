@@ -1,8 +1,8 @@
 whitespace sanitizer //DONE
 string reader //DONE execpt \u
 number extractor with exponantial support //DONE
-Value extractor
-array 
-Object
+Value extractor //DONE
+array //DONE
+Object //DONE
 error handling
 

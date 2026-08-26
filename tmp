@@ -1,0 +1,293 @@
+############################################
+# 1. Basic valid documents
+############################################
+
+=== [simple_object] ===
+input: {"a":1}
+result: parsed
+  - type=OBJECT
+    - type=NUMBER name="a" value=1
+
+=== [array_three_elements] ===
+input: [1,2,3]
+expectation: child chain should be 1 -> 2 -> 3
+  - type=ARRAY
+    - type=NUMBER value=1
+    - type=NUMBER value=2
+    - type=NUMBER value=3
+check: PASS
+
+=== [object_three_fields] ===
+input: {"a":1,"b":2,"c":3}
+result: parsed
+  - type=OBJECT
+    - type=NUMBER name="a" value=1
+    - type=NUMBER name="b" value=2
+    - type=NUMBER name="c" value=3
+
+=== [top_level_string] ===
+input: "just a string"
+result: parsed
+  - type=STRING value="just a string"
+
+=== [top_level_number] ===
+input: 42
+result: parsed
+  - type=NUMBER value=42
+
+=== [nested_object] ===
+input: {"nested":{"x":1}}
+result: parsed
+  - type=OBJECT
+    - type=OBJECT name="nested"
+      - type=NUMBER name="x" value=1
+
+=== [array_of_arrays] ===
+input: [[1,2],[3,4]]
+result: parsed
+  - type=ARRAY
+    - type=ARRAY
+      - type=NUMBER value=1
+      - type=NUMBER value=2
+    - type=ARRAY
+      - type=NUMBER value=3
+      - type=NUMBER value=4
+
+############################################
+# 2. Empty containers
+############################################
+
+=== [empty_object] ===
+input: {}
+expectation: type should be OBJECT with no children
+  - type=OBJECT
+check: PASS
+
+=== [empty_array] ===
+input: []
+expectation: type should be ARRAY with no children
+  - type=ARRAY
+check: PASS
+
+=== [object_with_empty_object] ===
+input: {"a":{}}
+result: parsed
+  - type=OBJECT
+    - type=OBJECT name="a"
+
+############################################
+# 3. Strings & escapes
+############################################
+
+=== [plain_string] ===
+input: {"a":"hello"}
+result: parsed
+  - type=OBJECT
+    - type=STRING name="a" value="hello"
+
+=== [escaped_newline] ===
+input: {"a":"line1\nline2"}
+result: parsed
+  - type=OBJECT
+    - type=STRING name="a" value="line1
+line2"
+
+=== [escaped_quote] ===
+input: {"a":"quote\"inside"}
+result: parsed
+  - type=OBJECT
+    - type=STRING name="a" value="quote"inside"
+
+=== [escaped_backslash] ===
+input: {"a":"back\\slash"}
+result: parsed
+  - type=OBJECT
+    - type=STRING name="a" value="back\slash"
+
+=== [unicode_escape] ===
+input: {"a":"emoji\uD83D\uDE00"}
+result: parsed
+  - type=OBJECT
+    - type=STRING name="a" value="emoji"
+
+=== [unterminated_string] ===
+input: {"a":"unterminated
+JSON parce error at line 1 , at position 18 
+ near : {"a":"untermina 
+ with error file already endedresult: FAILED (NULL)
+
+=== [long_string_150_chars] ===
+input: {"a":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+result: parsed
+  - type=OBJECT
+    - type=STRING name="a" value="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+############################################
+# 4. Numbers
+############################################
+
+=== [positive_int] ===
+input: {"a":123}
+result: parsed
+  - type=OBJECT
+    - type=NUMBER name="a" value=123
+
+=== [negative_int] ===
+input: {"a":-45}
+result: parsed
+  - type=OBJECT
+    - type=NUMBER name="a" value=-45
+
+=== [zero] ===
+input: {"a":0}
+result: parsed
+  - type=OBJECT
+    - type=NUMBER name="a" value=0
+
+=== [leading_zero_invalid] ===
+input: {"a":01}
+JSON parce error at line 1 , at position 6 
+ near : {"a":0 
+ with error invalid numberresult: FAILED (NULL)
+
+=== [float] ===
+input: {"a":3.14}
+result: parsed
+  - type=OBJECT
+    - type=NUMBER name="a" value=3.14
+
+=== [exponent] ===
+input: {"a":1e10}
+result: parsed
+  - type=OBJECT
+    - type=NUMBER name="a" value=1e+10
+
+=== [negative_exponent] ===
+input: {"a":1.5e-3}
+result: parsed
+  - type=OBJECT
+    - type=NUMBER name="a" value=0.0015
+
+=== [leading_plus_invalid] ===
+input: {"a":+5}
+JSON parce error at line 1 , at position 5 
+ near : {"a": 
+ with error invalid litteral (true/false/null)result: FAILED (NULL)
+
+=== [no_leading_digit_invalid] ===
+input: {"a":.5}
+JSON parce error at line 1 , at position 5 
+ near : {"a": 
+ with error invalid litteral (true/false/null)result: FAILED (NULL)
+
+=== [huge_exponent_25_digits] ===
+input: {"a":1e1111111111111111111111111}
+JSON parce error at line 1 , at position 32 
+ near : {"a":1e11111111 
+ with error number too bigresult: FAILED (NULL)
+
+############################################
+# 5. Literals
+############################################
+
+=== [literal_true] ===
+input: {"a":true}
+result: parsed
+  - type=OBJECT
+    - type=BOOLEAN name="a" value=true
+
+=== [literal_false] ===
+input: {"a":false}
+result: parsed
+  - type=OBJECT
+    - type=BOOLEAN name="a" value=false
+
+=== [literal_null] ===
+input: {"a":null}
+result: parsed
+  - type=OBJECT
+    - type=NULL name="a" value=null
+
+=== [two_booleans_regression] ===
+input: {"a":true,"b":false}
+expectation: both booleans parse correctly (fallthrough bug regression test)
+  - type=OBJECT
+    - type=BOOLEAN name="a" value=true
+    - type=BOOLEAN name="b" value=false
+check: PASS
+
+=== [malformed_literal] ===
+input: {"a":tru}
+JSON parce error at line 1 , at position 5 
+ near : {"a": 
+ with error invalid litteral (true/false/null)result: FAILED (NULL)
+
+############################################
+# 6. Whitespace tolerance
+############################################
+
+=== [spaces_everywhere] ===
+input: { "a" : 1 }
+result: parsed
+  - type=OBJECT
+    - type=NUMBER name="a" value=1
+
+=== [newlines_and_indentation] ===
+input: {
+  "a": 1
+}
+result: parsed
+  - type=OBJECT
+    - type=NUMBER name="a" value=1
+
+=== [leading_whitespace_before_brace] ===
+input:    {"a":1}
+result: parsed
+  - type=OBJECT
+    - type=NUMBER name="a" value=1
+
+############################################
+# 7. Malformed structure (should fail cleanly)
+############################################
+
+=== [trailing_comma] ===
+input: {"a":1,}
+JSON parce error at line 1 , at position 7 
+ near : {"a":1, 
+ with error inexpected characterresult: FAILED (NULL)
+
+=== [missing_comma] ===
+input: {"a":1 "b":2}
+result: parsed
+  - type=OBJECT
+    - type=NUMBER name="a" value=1
+
+=== [leading_comma] ===
+input: {,"a":1}
+JSON parce error at line 1 , at position 1 
+ near : { 
+ with error inexpected characterresult: FAILED (NULL)
+
+=== [missing_colon_and_value] ===
+input: {"a"}
+JSON parce error at line 1 , at position 4 
+ near : {"a" 
+ with error expected ':result: FAILED (NULL)
+
+=== [empty_file] ===
+input: 
+JSON parce error at line 1 , at position 0 
+ near :  
+ with error invalid litteral (true/false/null)result: FAILED (NULL)
+
+=== [unterminated_object] ===
+input: {
+JSON parce error at line 1 , at position 1 
+ near : { 
+ with error inexpected characterresult: FAILED (NULL)
+
+############################################
+# Summary
+############################################
+41/41 test inputs produced a non-NULL parse result
+(non-NULL doesn't mean correct -- check each dump against its expectation above)
