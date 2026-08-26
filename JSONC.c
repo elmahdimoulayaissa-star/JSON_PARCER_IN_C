@@ -99,7 +99,7 @@ static const int locate(char* file_str,int* pos,int* line,char* near){
         if (file_str[i] == '\n')(*line)++;
     }
 
-    int start = ((*pos) -15 >= 0 ) ? (*pos) - 15 : 0;
+    int start = ((*pos) -14 >= 0 ) ? (*pos) - 14 : 0;
     int n = (start != 0) ? 15 : 15 + ((*pos)-15);
     memcpy(near,file_str, n);
     near[n]='\0';
