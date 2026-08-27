@@ -58,5 +58,6 @@ typedef struct JSON_Error {
 
 JSONC* json_in_c(FILE* file);
 void json_c_delete(JSONC* head);
+void print_JSONC(JSONC *head);
 
 #endif

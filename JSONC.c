@@ -6,6 +6,7 @@
 #include <string.h>
 #include "JSONC.h"
 #include <math.h>
+#include <time.h>
 
 
 enum STRING_t{
@@ -20,15 +21,63 @@ static const int locate(char* file_str,int* pos,int* line,char*near);
 static const int report_error (char* file_str,int* pos,JSON_Errorcode code);
 
 
-static int object_reader(char* file_str,int* pos ,JSONC* parent); 
-static int array_reader(char* filr_str, int* pos,JSONC* parent);
+static int object_reader(char* file_str,int* pos ,JSONC* current_node); 
+static int array_reader(char* filr_str, int* pos,JSONC* current_node);
 static int white_space_sanitizer(char* file_str,int* pos);
 static bool is_white_space(char curr);
-static int string_reader(char* file_str,int* pos ,JSONC* parent,enum STRING_t type);
-static int number_reader(char* file_str,int* pos, JSONC* parent);
+static int string_reader(char* file_str,int* pos ,JSONC* current_node,enum STRING_t type);
+static int number_reader(char* file_str,int* pos, JSONC* current_node);
 static bool is_digit(char curr);
-static int value_reader(char* file_str ,int* pos , JSONC* parent);
+static int value_reader(char* file_str ,int* pos , JSONC* current_node);
+static char utf8_encoder(char* file_str,int* pos, JSONC* current_node);
+static void print_JSONC_rec(JSONC* head,int depth);
 
+void print_JSONC(JSONC *head){
+    print_JSONC_rec(head, 0);
+}
+
+static void print_JSONC_rec(JSONC* head,int depth){
+    for(int i=0; i<depth;i++)printf(" ");
+    if(head->string != NULL && head->string != 0){
+        printf("\"%s\"\t:\t",head->string);
+    }
+    switch (head->type) {
+        case STRING:
+            printf("%s\t","STRING");
+            printf("%s",head->valuestring);
+            break;
+        case NUMBER:
+            printf("%s\t","NUMBER");
+            printf("%e",head->valuedouble);
+            break;
+        case BOOLEAN:
+            printf("%s\t","BOOLIEN");
+            printf("%s",head->valuestring);
+            break;
+        case NULL_e:
+            printf("%s\t","NULL");
+            printf("%s","NULL");
+            break;
+        case OBJECT :
+            printf("%s\t","OBJECT");
+            if (head->child != NULL) {
+                printf("\n");
+                print_JSONC_rec(head->child, depth+1);
+            }
+            break;
+        case ARRAY:
+            printf("%s\t","ARRAY");
+            if (head->child != NULL) {
+                printf("\n");
+                print_JSONC_rec(head->child, depth+1);
+            }
+            break;
+    }
+    printf("\n");
+    if (head->next !=NULL) {
+        print_JSONC_rec(head->next, depth);
+    }
+}
 void json_c_delete(JSONC* head){
     if (head == NULL )return;
     if(head->child != NULL)json_c_delete(head->child);
@@ -141,7 +190,7 @@ static int white_space_sanitizer(char* file_str,int* pos){
 }
 
 
-static int string_reader(char* file_str,int* pos ,JSONC* parent,enum STRING_t type ){
+static int string_reader(char* file_str,int* pos ,JSONC* current_node,enum STRING_t type ){
     char curr = file_str[*pos];
     int curr_size = 100;
     char* buffer = calloc(curr_size,sizeof(char));
@@ -168,7 +217,12 @@ static int string_reader(char* file_str,int* pos ,JSONC* parent,enum STRING_t ty
                 case 'r': buffer[++i] = '\r';(*pos)++;break;
                 case 't': buffer[++i] = '\t';(*pos)++;break;
                 case 'u': //TODO \uXXXX
-                        (*pos)+=5;
+                        int temp = (*pos) + 5;
+                        while(*pos <= temp ){
+                            (*pos)++;
+                            curr = file_str[*pos];
+                            if (curr == '\0')return report_error(file_str, pos, JSON_ERR_END_OF_FILE);
+                        }
                         break;
                 default:
                         free(buffer);
@@ -193,10 +247,10 @@ static int string_reader(char* file_str,int* pos ,JSONC* parent,enum STRING_t ty
     (*pos)++;
     
     if(type == NAME ){
-        parent->string = strdup(buffer);
+        current_node->string = strdup(buffer);
     }else {
-        parent->type = STRING; 
-        parent->valuestring = strdup(buffer); 
+        current_node->type = STRING; 
+        current_node->valuestring = strdup(buffer); 
     }
 
     free(buffer);
@@ -208,7 +262,7 @@ static bool is_digit(char curr){
     return curr >= '0' && curr <= '9';
 }
 
-static int number_reader(char* file_str,int* pos, JSONC* parent){
+static int number_reader(char* file_str,int* pos, JSONC* current_node){
 
     char curr = file_str[*pos];
     bool positive = true;
@@ -323,71 +377,71 @@ number_fusion_and_allocation :
     if(isinf(res)){
         return report_error(file_str,pos, JSON_ERR_INVALID_NUMBER_INF);
     } 
-    parent->type = NUMBER;
-    parent->valuedouble = res;
+    current_node->type = NUMBER;
+    current_node->valuedouble = res;
     return 0;
 
 }
 
 
-static int value_reader(char* file_str ,int* pos , JSONC* parent){
+static int value_reader(char* file_str ,int* pos , JSONC* current_node){
     white_space_sanitizer(file_str,pos); 
     char curr = file_str[*pos];
     switch (curr) {
         case '"':
             (*pos)++;
-            string_reader(file_str, pos, parent,VALUE);
+            string_reader(file_str, pos, current_node,VALUE);
             break;
         case '0':case '1':case '2':case '3':case '4':case '5':case '6':case '7':case '8':case '9':case '-':
-            number_reader(file_str, pos, parent);
+            number_reader(file_str, pos, current_node);
             break;
         case '{':{
             (*pos)++;
-            parent->type = OBJECT;
+            current_node->type = OBJECT;
             if(file_str[(*pos)] == '}'){
                 (*pos)++;break;
             }else {
                 JSONC* child_o = calloc(1,sizeof(*child_o));
-                parent->child = child_o;
+                current_node->child = child_o;
                 object_reader(file_str, pos, child_o);
             }
             break;
         }
         case '[':{
             (*pos)++;
-            parent->type = ARRAY;
+            current_node->type = ARRAY;
             if(file_str[(*pos)] == ']'){
                 (*pos)++;break;
             }else {
                 JSONC* child_a = calloc(1,sizeof(*child_a));
-                parent->child = child_a;
+                current_node->child = child_a;
                 array_reader(file_str, pos, child_a);
             }
             break;
         }
         case 'n':
             if(strncmp(file_str + *pos, "null",4) == 0){
-               parent->type =  NULL_e;
-               parent->valuedouble = 0;
-               parent->valuestring = NULL;
+               current_node->type =  NULL_e;
+               current_node->valuedouble = 0;
+               current_node->valuestring = NULL;
                *pos += 4;
 //               if (file_str[*pos] == '\0')// goto null_terminator;
                break;
             }
         case 't':
             if(strncmp(file_str + *pos, "true",4) == 0){
-               parent->type =  BOOLEAN;
-               parent->valuedouble = 1;
-               parent->valuestring = "true";
+               current_node->type =  BOOLEAN;
+               current_node->valuedouble = 1;
+               current_node->valuestring = "true";
                *pos += 4;
 //               if (file_str[*pos] == '\0')// goto null_terminator;
                break;
             }
         case 'f':
             if(strncmp(file_str + *pos, "false",5) == 0){
-               parent->type =  BOOLEAN;
-               parent->valuedouble = 0;
-               parent->valuestring = "false";
+               current_node->type =  BOOLEAN;
+               current_node->valuedouble = 0;
+               current_node->valuestring = "false";
                *pos += 5;
 //               if (file_str[*pos] == '\0')// goto null_terminator;
                break;
@@ -402,7 +456,7 @@ static int value_reader(char* file_str ,int* pos , JSONC* parent){
 
 
 
-static int array_reader(char* file_str, int* pos,JSONC* parent){
+static int array_reader(char* file_str, int* pos,JSONC* current_node){
     //curr is after '['
     white_space_sanitizer(file_str, pos);
     char curr = file_str[*pos];
@@ -413,7 +467,8 @@ static int array_reader(char* file_str, int* pos,JSONC* parent){
         (*pos)++; 
         return 0;
     }
-    value_reader(file_str, pos, parent);
+    value_reader(file_str, pos, current_node);
+    white_space_sanitizer(file_str, pos);
     
     
     curr = file_str[*pos];
@@ -422,13 +477,13 @@ static int array_reader(char* file_str, int* pos,JSONC* parent){
         (*pos)++;
         white_space_sanitizer(file_str, pos);
         JSONC* next = calloc(1,sizeof(JSONC));
-        parent->next = next;
-        next->prev =  parent;
+        current_node->next = next;
+        next->prev =  current_node;
 
         value_reader(file_str, pos, next);
         white_space_sanitizer(file_str,pos);
         curr = file_str[*pos];
-        parent = next;
+        current_node = next;
     }
 
     curr = file_str[*pos];
@@ -440,14 +495,14 @@ static int array_reader(char* file_str, int* pos,JSONC* parent){
 }
 
 
-static int object_reader(char* file_str,int* pos ,JSONC* parent){
+static int object_reader(char* file_str,int* pos ,JSONC* current_node){
     white_space_sanitizer(file_str, pos);
     char curr = file_str[*pos];
 
 
     if(curr =='"'){
         (*pos)++;
-        string_reader(file_str, pos, parent, NAME);
+        string_reader(file_str, pos, current_node, NAME);
         white_space_sanitizer(file_str, pos);
         curr = file_str[*pos];
         if(curr !=':') {
@@ -455,9 +510,9 @@ static int object_reader(char* file_str,int* pos ,JSONC* parent){
         }
         (*pos)++;
         white_space_sanitizer(file_str, pos);
-        value_reader(file_str,pos, parent);
+        value_reader(file_str,pos, current_node);
         white_space_sanitizer(file_str, pos);
-    }else if (curr == '}') {parent = NULL;}else {
+    }else if (curr == '}') {current_node = NULL;}else {
         return report_error(file_str, pos,JSON_ERR_UNEXPECTED_CHAR);
     }
 
@@ -473,8 +528,8 @@ static int object_reader(char* file_str,int* pos ,JSONC* parent){
             return report_error(file_str, pos, JSON_ERR_UNEXPECTED_CHAR);
         }
         JSONC* next = calloc(1,sizeof(*next));
-        parent->next = next;
-        next->prev = parent;
+        current_node->next = next;
+        next->prev = current_node;
         (*pos)++;
 
         string_reader(file_str, pos, next, NAME);
@@ -491,12 +546,20 @@ static int object_reader(char* file_str,int* pos ,JSONC* parent){
         white_space_sanitizer(file_str,pos);        
 
         curr = file_str[*pos];
-        parent = next;
+        current_node = next;
     }
 
     curr = file_str[*pos];
     if (curr != '}'){
         return JSON_ERR_EXPECTED_COMMA_OR_END;
     }
+    (*pos)++;
     return 0;
 }
+
+
+static char utf8_encoder(char* file_str,int* pos, JSONC* current_node){
+    char curr = file_str[*pos];
+    
+}
+
