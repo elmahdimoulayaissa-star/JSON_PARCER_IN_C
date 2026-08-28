@@ -29,7 +29,9 @@ static int string_reader(char* file_str,int* pos ,JSONC* current_node,enum STRIN
 static int number_reader(char* file_str,int* pos, JSONC* current_node);
 static bool is_digit(char curr);
 static int value_reader(char* file_str ,int* pos , JSONC* current_node);
-static char utf8_encoder(char* file_str,int* pos, JSONC* current_node);
+static int utf8_encoder(char* file_str,int* pos,char* out);
+static int char_to_hex(char* file_str,int* pos,int* i);
+static bool ishex(char curr);
 static void print_JSONC_rec(JSONC* head,int depth);
 
 void print_JSONC(JSONC *head){
@@ -216,12 +218,12 @@ static int string_reader(char* file_str,int* pos ,JSONC* current_node,enum STRIN
                 case 'n': buffer[++i] = '\n';(*pos)++;break;
                 case 'r': buffer[++i] = '\r';(*pos)++;break;
                 case 't': buffer[++i] = '\t';(*pos)++;break;
-                case 'u': //TODO \uXXXX
-                        int temp = (*pos) + 5;
-                        while(*pos <= temp ){
-                            (*pos)++;
-                            curr = file_str[*pos];
-                            if (curr == '\0')return report_error(file_str, pos, JSON_ERR_END_OF_FILE);
+                case 'u':
+                        ++(*pos);
+                        char u[4];
+                        int n = utf8_encoder(file_str, pos,u);
+                        for (int j = 0;j<n;j++){
+                            buffer[++i] = u[j];
                         }
                         break;
                 default:
@@ -557,9 +559,73 @@ static int object_reader(char* file_str,int* pos ,JSONC* current_node){
     return 0;
 }
 
+static bool ishex(char curr){
+    if (is_digit(curr) || curr == 'A'|| curr == 'B'|| curr == 'C'|| curr == 'D'|| curr == 'E'|| curr == 'F') {
+        return true; 
+    }
+    return false;
+}
+static int char_to_hex(char* file_str,int* pos,int* i){
 
-static char utf8_encoder(char* file_str,int* pos, JSONC* current_node){
     char curr = file_str[*pos];
+    int hex = 0x0000;
+
+    while ((*i)<4 && ishex(curr)) {
+        if (hex > 0x0) hex = hex<<4 ;
+        hex += 0x0001 * ((int)curr - (int)'0'); 
+        (*i)++;
+        curr = file_str[++(*pos)];
+    }
+
+    if ( *i < 4 )return report_error(file_str,pos, JSON_ERR_UNEXPECTED_CHAR);
+
+    return hex;
+}
+
+static int utf8_encoder(char* file_str,int* pos,char *out){
     
+    int i = 0;
+    int hex = char_to_hex(file_str, pos,&i); 
+
+    if (hex >= 0xD800 && hex <= 0xDFFF){
+        white_space_sanitizer(file_str,pos);
+        char curr = file_str[*pos];
+        if(curr != '\\'){
+            return report_error(file_str,pos, JSON_ERR_UNEXPECTED_CHAR);
+        }
+        curr = file_str[++(*pos)];
+        if(curr !='u'){
+            return report_error(file_str, pos, JSON_ERR_UNEXPECTED_CHAR);
+        }
+        ++(*pos);
+        int i2 = 0;
+        int hex2 = char_to_hex(file_str, pos,&i2);
+        if (hex2 <= 0xDC00 && hex2 >= 0xDFFF){
+            return report_error(file_str, pos, JSON_ERR_UNEXPECTED_CHAR);
+        }
+        i+=i2;
+        hex = ((hex - 0xD800) << 10) + ( hex2 - 0xDC00 ) + 0x10000;
+    }else if (hex >= 0xDC00 && hex <= 0xDFFF){
+        return report_error(file_str, pos, JSON_ERR_UNEXPECTED_CHAR);
+    }
+    if(hex <= 0x7F){
+        out[0] =(unsigned char) hex;
+        return 1;
+    }else if (hex<=0x7FF) {
+        out[0] = 0xC0 | (hex>>6);
+        out[1] = 0x80 | (hex & 0x3F);
+        return 2;
+    }else if (hex <= 0x7FFF) {
+        out[0] = 0xE0 | (hex >> 12);
+        out[1] = 0x80 | ((hex >> 6) & 0x3F);
+        out[2] = 0x80 | (hex & 0x3F);
+        return 3;
+    }else {
+        out[0] = 0xF0 | (hex >> 18);
+        out[1] = 0x80 | ((hex >> 12) & 0x3F);
+        out[2] = 0x80 | ((hex >> 6) & 0x3F);
+        out[3] = 0x80 | (hex & 0x3F);
+        return 4;
+    }
 }
 
