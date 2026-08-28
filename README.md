@@ -5,8 +5,8 @@ A minimal JSON parser in C. Parses a file into a linked-list/tree of JSONC nodes
 
 API
 ```c
-JSONC* json_in_c(FILE* file);   // parse a file into a JSONC tree (NULL on error)
-void   print_JSONC(JSONC* head);// debug-print the tree
+JSONC* json_in_c(FILE* file);   // parse a file into a JSONC tree
+void   print_JSONC(JSONC* head);// print the tree
 void   json_c_delete(JSONC* head); // free the tree
 ```
 Usage
